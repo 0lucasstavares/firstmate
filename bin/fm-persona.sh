@@ -56,7 +56,7 @@ safe_persona_dir() {
 }
 
 validate_file() {
-  local file=$1 label=$2 bytes sections expected actual h1_count
+  local file=$1 label=$2 bytes sections expected h1_count
   [ -f "$file" ] && [ ! -L "$file" ] || { printf '%s: missing, not regular, or symlinked\n' "$label" >&2; return 1; }
   bytes=$(wc -c < "$file") || return 1
   [ "$bytes" -le "$MAX_BYTES" ] || { printf '%s: exceeds %s-byte limit\n' "$label" "$MAX_BYTES" >&2; return 1; }
@@ -65,10 +65,10 @@ validate_file() {
     return 1
   fi
   h1_count=$(grep -c '^# [^[:space:]].*$' "$file" || true)
-  [ "$h1_count" -eq 1 ] && head -n 1 "$file" | grep -q '^# [^[:space:]]' || {
+  if [ "$h1_count" -ne 1 ] || ! head -n 1 "$file" | grep -q '^# [^[:space:]]'; then
     printf '%s: requires one display-name H1 as its first line\n' "$label" >&2
     return 1
-  }
+  fi
   sections=$(awk '/^## / { sub(/^## /, ""); print }' "$file")
   expected=$(printf '%s\n' "${REQUIRED_SECTIONS[@]}")
   [ "$sections" = "$expected" ] || {

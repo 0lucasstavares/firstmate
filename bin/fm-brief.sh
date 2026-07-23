@@ -123,6 +123,7 @@ PERSONA_FILE="$DATA/$ID/persona"
 PERSONA_SECTION=
 if [ "$PERSONA_SET" -eq 1 ]; then
   PERSONA_RENDERED=$(FM_CONFIG_OVERRIDE="$CONFIG" "$FM_ROOT/bin/fm-persona.sh" render "$PERSONA") || exit 1
+  # shellcheck disable=SC2016 # The rendered brief requires literal Markdown backticks.
   PERSONA_SECTION=$(printf '# Work Profile\nSelected persona: `%s`\n\n%s\n\n' "$PERSONA" "$PERSONA_RENDERED")
 fi
 mkdir -p "$DATA/$ID"
