@@ -251,6 +251,15 @@ A secondmate's routed reply returns through status or a document pointer, not by
 For the parent-owned correlation, recovery, and escalation contract on marked secondmate requests, see `bin/fm-pending-reply-lib.sh`.
 Supervise all live work under section 8.
 
+### Delivery language
+
+This section is the sole owner of Firstmate's prospective delivery-language policy.
+Use concise English for commit subjects and pull-request titles, and concise Brazilian Portuguese for authored commit bodies and pull-request bodies.
+Do not rewrite existing commit history or edit existing open pull requests to apply this policy.
+For no-mistakes runs, include this language directive in the run intent so its prompt-generated pull-request copy and prose reports use Brazilian Portuguese while the pull-request title stays in English.
+Give captain-facing validation summaries in Brazilian Portuguese without dropping evidence, risks, decisions, fixes, or lifecycle content.
+The installed no-mistakes tool exposes no locale or language setting for its fixed AXI labels, findings, and help text, so those tool-owned surfaces remain English; never claim that they were localized.
+
 ### Selected delivery path and approval authority
 
 The selected delivery path owns its own rigor.
