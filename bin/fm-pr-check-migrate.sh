@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Non-executing migration for watcher PR checks created by older Firstmate
 # versions. Legacy check files are never run, sourced, or parsed by Bash.
-# Canonical polls are rebuilt from validated metadata, provenance-bound polls
-# and registered custom checks remain armed, and every other task poll is
+# Pending validated merged-poll retirements finish first. Canonical polls are
+# then rebuilt from validated metadata, remaining provenance-bound polls and
+# registered custom checks remain armed, and every other task poll is
 # quarantined for private review. A current X-mode shim is preserved by exact
 # content, while the recognized older byte-static shim is refreshed in place.
 # Usage: fm-pr-check-migrate.sh [--checks-safe]
