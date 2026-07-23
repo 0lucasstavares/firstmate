@@ -234,6 +234,9 @@ new_git_world() {
   printf '%s\n' "instructions" > "$root/AGENTS.md"
   mkdir -p "$root/bin" "$root/.agents/skills"
   printf '%s\n' "echo spawn" > "$root/bin/fm-spawn.sh"
+  # crew-personas inheritance shells out to $FM_ROOT/bin/fm-persona.sh; the fake
+  # root needs the real script so persona propagation is exercised, not skipped.
+  ln -s "$ROOT/bin/fm-persona.sh" "$root/bin/fm-persona.sh"
   printf '%s\n' "skill" > "$root/.agents/skills/example.md"
   git -C "$root" add -A
   git -C "$root" commit -qm initial
