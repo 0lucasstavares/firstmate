@@ -420,6 +420,25 @@ test_active_dispatch_profile_does_not_block_secondmate_launch() {
   pass "active crew-dispatch profile does not block secondmate launches"
 }
 
+test_persona_sidecar_records_metadata_and_refuses_mismatch() {
+  local rec id out status
+  id=profile-persona-z18
+  rec=$(make_spawn_case profile-persona claude "$id")
+  read_case_record "$rec"
+  FM_HOME="$HOME_DIR" FM_CONFIG_OVERRIDE="$HOME_DIR/config" "$ROOT/bin/fm-persona.sh" init >/dev/null || fail "persona init failed"
+  printf 'investigator\n' > "$HOME_DIR/data/$id/persona"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness codex --persona reviewer)
+  status=$?
+  expect_code 1 "$status" "spawn persona mismatch must fail"
+  assert_contains "$out" 'does not match brief persona' "persona mismatch lacked diagnostic"
+  assert_absent "$HOME_DIR/state/$id.meta" "persona mismatch wrote task metadata"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness codex --persona investigator)
+  status=$?
+  expect_code 0 "$status" "matching persona spawn should succeed"
+  assert_grep 'persona=investigator' "$HOME_DIR/state/$id.meta" "spawn metadata omitted persona"
+  pass "spawn reads persona sidecars, records metadata, and refuses mismatches"
+}
+
 test_no_profile_keeps_claude_profile_defaults
 test_active_dispatch_profile_requires_explicit_harness_for_ship
 test_active_dispatch_profile_requires_explicit_harness_for_scout
@@ -437,5 +456,6 @@ test_pi_threads_model_and_max_effort
 test_quota_selected_default_array_reaches_spawn
 test_batch_forwards_shared_profile_flags
 test_active_dispatch_profile_does_not_block_secondmate_launch
+test_persona_sidecar_records_metadata_and_refuses_mismatch
 
 echo "# all fm-spawn-dispatch-profile tests passed"

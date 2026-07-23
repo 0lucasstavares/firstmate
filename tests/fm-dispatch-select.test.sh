@@ -311,6 +311,16 @@ ROWS
   pass "malformed arrays stay actionable validation errors and never enter random fallback"
 }
 
+test_persona_survives_quota_selection() {
+  local quota out
+  quota="$TMP_ROOT/persona.json"
+  write_quota "$quota" fresh 10 10 fresh 90 90
+  out=$(FM_DISPATCH_RANDOM_SOURCE="$RANDOM_ZERO" "$ROOT/bin/fm-dispatch-select.sh" --quota-json "$quota" \
+    '[{"harness":"claude","persona":"architect"},{"harness":"codex","persona":"backend-engineer"}]' 2>/dev/null)
+  assert_profile "$out" '{"harness":"codex","persona":"backend-engineer"}' "quota-selected candidate lost its persona"
+  pass "quota selection preserves the selected candidate persona"
+}
+
 test_implicit_array_picks_higher_min_provider
 test_rule_array_without_select_invokes_quota_axi
 test_legacy_explicit_selector_stays_compatible
@@ -323,5 +333,6 @@ test_partial_quota_data_prefers_scorable_candidate
 test_operational_quota_failures_use_uniform_random_fallback
 test_single_profile_and_one_element_array
 test_malformed_profile_arrays_are_validation_errors
+test_persona_survives_quota_selection
 
 echo "# all fm-dispatch-select tests passed"

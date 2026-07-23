@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--persona <name>] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -21,6 +21,8 @@
 #   omitting both still fails loudly so an accidental omission is never silent.
 #   Set FM_SECONDMATE_CHARTER='<charter>' to fill the charter text.
 #   Set FM_SECONDMATE_SCOPE='<scope>' to write a routing scope distinct from the charter text.
+#   --persona inserts one validated private work profile and atomically records its
+#   canonical name at data/<task-id>/persona. It applies only to ship or scout tasks.
 #   --herdr-lab is mandatory when the task will issue Herdr lifecycle commands.
 #   It adds the hard isolation contract backed by bin/fm-herdr-lab.sh.
 #   The flag must be explicit because {TASK} is filled after scaffolding and the
@@ -70,20 +72,39 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 KIND=ship
 HERDR_LAB=0
 NO_PROJECTS=0
+PERSONA=
+PERSONA_SET=0
+PERSONA_NEXT=0
 POS=()
 for a in "$@"; do
+  if [ "$PERSONA_NEXT" -eq 1 ]; then
+    PERSONA=$a
+    PERSONA_SET=1
+    PERSONA_NEXT=0
+    continue
+  fi
   case "$a" in
     --scout) KIND=scout ;;
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
+    --persona) PERSONA_NEXT=1 ;;
+    --persona=*) PERSONA=${a#--persona=}; PERSONA_SET=1 ;;
     --no-projects) NO_PROJECTS=1 ;;
     *) POS+=("$a") ;;
   esac
 done
+[ "$PERSONA_NEXT" -eq 0 ] || { echo "error: --persona requires a value" >&2; exit 1; }
 ID=${POS[0]}
+[ "$PERSONA_SET" -eq 0 ] || [ -n "$PERSONA" ] || { echo "error: --persona requires a value" >&2; exit 1; }
+
+if [ "$KIND" = secondmate ] && [ "$PERSONA_SET" -eq 1 ]; then
+  echo "error: --persona applies only to crewmate ship or scout briefs" >&2
+  exit 1
+fi
 
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
   echo "error: --herdr-lab applies only to crewmate ship or scout briefs" >&2
@@ -96,8 +117,22 @@ if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
 fi
 
 BRIEF="$DATA/$ID/brief.md"
+PERSONA_FILE="$DATA/$ID/persona"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
+[ -e "$PERSONA_FILE" ] && { echo "error: $PERSONA_FILE already exists" >&2; exit 1; }
+PERSONA_SECTION=
+if [ "$PERSONA_SET" -eq 1 ]; then
+  PERSONA_RENDERED=$(FM_CONFIG_OVERRIDE="$CONFIG" "$FM_ROOT/bin/fm-persona.sh" render "$PERSONA") || exit 1
+  PERSONA_SECTION=$(printf '# Work Profile\nSelected persona: `%s`\n\n%s\n\n' "$PERSONA" "$PERSONA_RENDERED")
+fi
 mkdir -p "$DATA/$ID"
+if [ "$PERSONA_SET" -eq 1 ]; then
+  persona_tmp=$(mktemp "$DATA/$ID/.persona.XXXXXX") || exit 1
+  if ! printf '%s\n' "$PERSONA" > "$persona_tmp" || ! chmod 600 "$persona_tmp" || ! mv -f "$persona_tmp" "$PERSONA_FILE"; then
+    rm -f "$persona_tmp"
+    exit 1
+  fi
+fi
 
 shell_quote() {
   printf "'"
@@ -233,7 +268,7 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 # Task
 {TASK}
 
-$HERDR_SECTION
+$PERSONA_SECTION$HERDR_SECTION
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
@@ -337,7 +372,7 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 # Task
 {TASK}
 
-$HERDR_SECTION
+$PERSONA_SECTION$HERDR_SECTION
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.

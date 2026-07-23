@@ -9,6 +9,7 @@
 #                 "MISSING_MANUAL: <tool> (instructions: <url>)", "NEEDS_GH_AUTH",
 #                 "BACKEND_INVALID: <name> (known: <names>)",
 #                 "CREW_DISPATCH: invalid config/crew-dispatch.json - <reason>",
+#                 "CREW_PERSONAS: starter library setup failed - <reason>",
 #                 "FLEET_SYNC: <repo>: skipped|recovered|STUCK: <detail>",
 #                 "PR_CHECK_MIGRATION: <private remediation>",
 #                 "TANGLE: <remediation>",
@@ -733,7 +734,8 @@ crew_dispatch_validate() {
         + (if has("default") then [profiles(.default)[]?] else [] end));
     def malformed_optional_fields($items):
       ($items | any(has("model") and (((.model | type) != "string") or (.model | length) == 0)))
-      or ($items | any(has("effort") and (((.effort | type) != "string") or (.effort | length) == 0)));
+      or ($items | any(has("effort") and (((.effort | type) != "string") or (.effort | length) == 0)))
+      or ($items | any(has("persona") and ((.persona | type) != "string" or (.persona | test("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$") | not))));
     def bad_efforts:
       configured_profiles
       | map({h: .harness, e: .effort})
@@ -775,6 +777,14 @@ crew_dispatch_validate() {
     echo "CREW_DISPATCH: invalid config/crew-dispatch.json - $err"
     return 0
   fi
+  while IFS= read -r persona; do
+    [ -n "$persona" ] || continue
+    if ! persona_error=$(FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-persona.sh" validate "$persona" 2>&1); then
+      persona_error=${persona_error%%$'\n'*}
+      echo "CREW_DISPATCH: invalid config/crew-dispatch.json - invalid persona: $persona ($persona_error)"
+      return 0
+    fi
+  done < <(jq -r '[(.rules // [])[]? | (if (.use | type) == "array" then .use[] else .use end) | .persona? // empty] + (if has("default") then [(if (.default | type) == "array" then .default[] else .default end) | .persona? // empty] else [] end) | unique[]' "$file")
   if [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ]; then
     jq -r '
     def profile($p):
@@ -782,7 +792,8 @@ crew_dispatch_validate() {
       + (if ($p.model? != null) then "/" + ($p.model | tostring)
          elif ($p.effort? != null) then "/default"
          else "" end)
-      + (if ($p.effort? != null) then "/" + ($p.effort | tostring) else "" end);
+      + (if ($p.effort? != null) then "/" + ($p.effort | tostring) else "" end)
+      + (if ($p.persona? != null) then " persona=" + ($p.persona | tostring) else "" end);
     def profile_set($value; $selector):
       if ($value | type) == "array" then
         (($selector // "quota-balanced") + "[" + ([$value[] | profile(.)] | join(", ")) + "]")
@@ -860,6 +871,12 @@ crew=
 [ -f "$CONFIG/crew-harness" ] && crew=$(tr -d '[:space:]' < "$CONFIG/crew-harness" || true)
 if [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ] && [ -n "$crew" ] && [ "$crew" != "default" ]; then
   echo "BOOTSTRAP_INFO: crew harness override active: $crew"
+fi
+if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
+  if ! persona_setup_error=$(FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-persona.sh" init 2>&1); then
+    persona_setup_error=${persona_setup_error%%$'\n'*}
+    echo "CREW_PERSONAS: starter library setup failed - $persona_setup_error"
+  fi
 fi
 crew_dispatch_validate
 if [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ] \

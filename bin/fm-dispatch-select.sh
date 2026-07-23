@@ -128,6 +128,7 @@ validation_error=$(printf '%s\n' "$profiles_json" | jq -r '
   elif any(.[]; ((.harness? | type) != "string") or (.harness | length) == 0) then "each dispatch profile needs a non-empty harness"
   elif any(.[]; has("model") and (((.model | type) != "string") or (.model | length) == 0)) then "dispatch profile model must be a non-empty string when present"
   elif any(.[]; has("effort") and (((.effort | type) != "string") or (.effort | length) == 0)) then "dispatch profile effort must be a non-empty string when present"
+  elif any(.[]; has("persona") and (((.persona | type) != "string") or (.persona | test("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$") | not))) then "dispatch profile persona must be a lowercase kebab name when present"
   elif any(.[]; .harness as $h | verified($h) | not) then "dispatch profile contains an unverified harness"
   elif any(.[]; has("effort") and (. as $profile | effort_ok($profile.harness; $profile.effort) | not)) then "dispatch profile contains an unsupported harness/effort pair"
   else empty
@@ -141,7 +142,8 @@ clean_profile_at() {
     def clean($p):
       {harness: $p.harness}
       + (if ($p.model? | type) == "string" then {model: $p.model} else {} end)
-      + (if ($p.effort? | type) == "string" then {effort: $p.effort} else {} end);
+      + (if ($p.effort? | type) == "string" then {effort: $p.effort} else {} end)
+      + (if ($p.persona? | type) == "string" then {persona: $p.persona} else {} end);
     clean(.[$index])
   '
 }

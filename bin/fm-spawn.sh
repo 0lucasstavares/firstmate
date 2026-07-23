@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--scout]
+# Usage: fm-spawn.sh <task-id> <project-dir> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--persona <name>] [--backend <name>] [--scout]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
@@ -9,6 +9,9 @@
 #   axes chosen by firstmate at intake. They are only threaded into harnesses whose
 #   installed CLIs were verified to support that axis; unsupported axes are omitted
 #   from that harness's launch rather than guessed.
+#   --persona <name> is an explicit private work profile. It must exactly match
+#   the persona sidecar written by fm-brief.sh, and remains independent of every
+#   harness, model, effort, backend, project mode, and authority axis.
 #   --backend <name> is the explicit runtime session-provider backend for this
 #   spawn. Without it, the script resolves FM_BACKEND, then config/backend, then
 #   runtime auto-detection (the runtime firstmate itself is executing inside -
@@ -146,10 +149,12 @@ KIND=ship
 HARNESS_ARG=
 MODEL=
 EFFORT=
+PERSONA=
 BACKEND_ARG=
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
+PERSONA_SET=0
 BACKEND_SET=0
 POS=()
 want_value=
@@ -162,6 +167,7 @@ for a in "$@"; do
       harness) HARNESS_ARG=$a; HARNESS_SET=1 ;;
       model) MODEL=$a; MODEL_SET=1 ;;
       effort) EFFORT=$a; EFFORT_SET=1 ;;
+      persona) PERSONA=$a; PERSONA_SET=1 ;;
       backend) BACKEND_ARG=$a; BACKEND_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
@@ -177,6 +183,8 @@ for a in "$@"; do
     --model=*) MODEL=${a#--model=}; MODEL_SET=1 ;;
     --effort) want_value=effort ;;
     --effort=*) EFFORT=${a#--effort=}; EFFORT_SET=1 ;;
+    --persona) want_value=persona ;;
+    --persona=*) PERSONA=${a#--persona=}; PERSONA_SET=1 ;;
     --backend) want_value=backend ;;
     --backend=*) BACKEND_ARG=${a#--backend=}; BACKEND_SET=1 ;;
     *) POS+=("$a") ;;
@@ -186,11 +194,13 @@ done
 [ "$HARNESS_SET" -eq 0 ] || [ -n "$HARNESS_ARG" ] || { echo "error: --harness requires a non-empty value" >&2; exit 1; }
 [ "$MODEL_SET" -eq 0 ] || [ -n "$MODEL" ] || { echo "error: --model requires a non-empty value" >&2; exit 1; }
 [ "$EFFORT_SET" -eq 0 ] || [ -n "$EFFORT" ] || { echo "error: --effort requires a non-empty value" >&2; exit 1; }
+[ "$PERSONA_SET" -eq 0 ] || [ -n "$PERSONA" ] || { echo "error: --persona requires a non-empty value" >&2; exit 1; }
 [ "$BACKEND_SET" -eq 0 ] || [ -n "$BACKEND_ARG" ] || { echo "error: --backend requires a non-empty value" >&2; exit 1; }
 case "$EFFORT" in
   ''|low|medium|high|xhigh|max) ;;
   *) echo "error: --effort must be one of low, medium, high, xhigh, max" >&2; exit 1 ;;
 esac
+[ "$KIND" != secondmate ] || [ "$PERSONA_SET" -eq 0 ] || { echo "error: --persona applies only to crewmate ship or scout spawns" >&2; exit 1; }
 
 # Backend selection (data/fm-backend-design-d7): explicit --backend, else
 # FM_BACKEND env, else config/backend, else runtime auto-detection, else
@@ -288,6 +298,7 @@ spawn_abort_cleanup() {
             echo "tasktmp=${TASK_TMP:-}"
             echo "model=${MODEL:-default}"
             echo "effort=${EFFORT:-default}"
+            [ -z "${PERSONA:-}" ] || echo "persona=$PERSONA"
             echo "backend=orca"
             echo "orca_worktree_id=$ORCA_WORKTREE_ID"
             [ -z "${ORCA_TERMINAL:-}" ] || echo "terminal=$ORCA_TERMINAL"
@@ -352,6 +363,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ -z "$HARNESS_ARG" ] || shared_args+=(--harness "$HARNESS_ARG")
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
+  [ -z "$PERSONA" ] || shared_args+=(--persona "$PERSONA")
   [ -z "$BACKEND_ARG" ] || shared_args+=(--backend "$BACKEND_ARG")
   for pair in "${POS[@]}"; do
     case "$pair" in
@@ -752,6 +764,21 @@ else
   BRIEF="$DATA/$ID/brief.md"
 fi
 [ -f "$BRIEF" ] || { echo "error: no brief at $BRIEF" >&2; exit 1; }
+PERSONA_SIDECAR="$DATA/$ID/persona"
+if [ "$KIND" != secondmate ] && { [ -e "$PERSONA_SIDECAR" ] || [ -L "$PERSONA_SIDECAR" ]; }; then
+  [ -f "$PERSONA_SIDECAR" ] && [ ! -L "$PERSONA_SIDECAR" ] || { echo "error: unsafe persona sidecar at $PERSONA_SIDECAR" >&2; exit 1; }
+  BRIEF_PERSONA=$(head -n 1 "$PERSONA_SIDECAR")
+  printf '%s\n' "$BRIEF_PERSONA" | cmp -s - "$PERSONA_SIDECAR" || { echo "error: invalid persona sidecar at $PERSONA_SIDECAR" >&2; exit 1; }
+  FM_CONFIG_OVERRIDE="$CONFIG" "$FM_ROOT/bin/fm-persona.sh" validate "$BRIEF_PERSONA" || exit 1
+  if [ "$PERSONA_SET" -eq 1 ] && [ "$PERSONA" != "$BRIEF_PERSONA" ]; then
+    echo "error: --persona '$PERSONA' does not match brief persona '$BRIEF_PERSONA'" >&2
+    exit 1
+  fi
+  PERSONA=$BRIEF_PERSONA
+elif [ "$PERSONA_SET" -eq 1 ]; then
+  echo "error: --persona '$PERSONA' requires matching brief persona sidecar at $PERSONA_SIDECAR" >&2
+  exit 1
+fi
 
 # PROJ_ABS can still carry a symlinked path component (e.g. macOS's /tmp ->
 # /private/tmp) when it came from the ship/scout branch's logical `pwd` above.
@@ -1224,6 +1251,7 @@ META_WINDOW=$T
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
+  [ -z "$PERSONA" ] || echo "persona=$PERSONA"
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
   # data/fm-backend-design-d7's P1 compatibility contract).

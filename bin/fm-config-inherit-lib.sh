@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # Inheritance propagation: the PRIMARY firstmate pushes a declared, extensible
 # set of LOCAL (gitignored) config items down into each secondmate home's
-# config/, so a secondmate's OWN crewmates inherit the primary's settings
+# config/, including the complete validated crew-personas directory, so a
+# secondmate's OWN crewmates inherit the primary's settings
 # (e.g. primary config/crew-dispatch.json makes a secondmate use the same dispatch
 # profile rules, primary config/crew-harness=codex makes a secondmate's crewmates
 # spawn on codex too, primary config/backlog-backend=manual makes that home
@@ -40,7 +41,7 @@ FM_SHARED_CAPTAIN_MODE="444"
 # The declared inheritable set (space-separated, config-dir-relative item paths).
 # Extend here to inherit more of the primary's local config; override via the
 # environment only in tests. Items must not contain whitespace.
-FM_INHERITABLE_CONFIG="${FM_INHERITABLE_CONFIG:-crew-dispatch.json crew-harness backlog-backend herdr-presentation-spaces}"
+FM_INHERITABLE_CONFIG="${FM_INHERITABLE_CONFIG:-crew-dispatch.json crew-harness crew-personas backlog-backend herdr-presentation-spaces}"
 
 fm_inherit_file_mode() {
   if [ "$(uname)" = Darwin ]; then
@@ -111,6 +112,7 @@ destination_allows_inherited_item() {
   fi
   top=$(git -C "$dest_parent_abs" rev-parse --show-toplevel 2>/dev/null) || return 1
   dest_path="$dest_parent_abs/$dest_name/$item"
+  [ "$item" != crew-personas ] || dest_path="$dest_path/.fm-inherit-probe"
   case "$dest_path" in
     "$top"/*) rel_path=${dest_path#"$top"/} ;;
     *) return 1 ;;
@@ -399,6 +401,58 @@ propagate_inheritable_config() {
     esac
     src="$src_config/$item"
     dest="$dest_config/$item"
+    if [ "$item" = crew-personas ]; then
+      if [ -e "$src" ] || [ -L "$src" ]; then
+        if [ ! -d "$src" ] || [ -L "$src" ]; then
+          reason="unsafe primary persona directory"
+          warn_inheritable_config_error "$item" "$src" "$reason"
+          record_inheritable_config_result "$item" error "$reason"
+          rc=1
+          continue
+        fi
+        if ! destination_allows_inherited_item "$dest_config" "$item"; then
+          reason=$(inheritable_config_skip_reason)
+          warn_inheritable_config_skip "$item" "$dest_config" "$reason"
+          record_inheritable_config_result "$item" skipped "$reason"
+          continue
+        fi
+        if [ -d "$dest" ] && [ ! -L "$dest" ] && diff -qr "$src" "$dest" >/dev/null 2>&1; then
+          if FM_CONFIG_OVERRIDE="$src_config" "$FM_ROOT/bin/fm-persona.sh" validate; then
+            record_inheritable_config_result "$item" unchanged ""
+          else
+            reason="primary persona library is invalid"
+            warn_inheritable_config_error "$item" "$src" "$reason"
+            record_inheritable_config_result "$item" error "$reason"
+            rc=1
+          fi
+        elif FM_CONFIG_OVERRIDE="$src_config" "$FM_ROOT/bin/fm-persona.sh" inherit "$dest_config"; then
+          record_inheritable_config_result "$item" pushed ""
+        else
+          reason="failed to validate and atomically copy persona library"
+          warn_inheritable_config_error "$item" "$dest" "$reason"
+          record_inheritable_config_result "$item" error "$reason"
+          rc=1
+        fi
+      elif [ -e "$dest" ] || [ -L "$dest" ]; then
+        if ! destination_allows_inherited_item "$dest_config" "$item"; then
+          reason=$(inheritable_config_skip_reason)
+          warn_inheritable_config_skip "$item" "$dest_config" "$reason"
+          record_inheritable_config_result "$item" skipped "$reason"
+          continue
+        fi
+        if "$FM_ROOT/bin/fm-persona.sh" remove-inherited "$dest_config"; then
+          record_inheritable_config_result "$item" pushed "mirrored primary absence"
+        else
+          reason="failed to remove persona library"
+          warn_inheritable_config_error "$item" "$dest" "$reason"
+          record_inheritable_config_result "$item" error "$reason"
+          rc=1
+        fi
+      else
+        record_inheritable_config_result "$item" unchanged ""
+      fi
+      continue
+    fi
     if [ -f "$src" ]; then
       if ! destination_allows_inherited_item "$dest_config" "$item"; then
         reason=$(inheritable_config_skip_reason)
@@ -586,8 +640,8 @@ fm_config_reread_save_retry_report() {
 # After successful propagation, write one instruction from the validated
 # destination state. Includes only changed allowlisted config files, each with
 # relative path, begin/end delimiters, and either the destination file's full
-# exact post-write bytes (streamed unparsed) or the literal token ABSENT when
-# the destination copy was removed. Returns 1 when no allowlisted config item
+# exact post-write bytes (streamed unparsed), a crew-personas directory reread
+# marker, or the literal token ABSENT when the destination copy was removed. Returns 1 when no allowlisted config item
 # changed (or on write failure). Never inlines data/captain-shared.md, SHA
 # values, selected profiles, or any generated interpretation.
 fm_config_write_reread_instruction() {
@@ -615,7 +669,9 @@ fm_config_write_reread_instruction() {
       printf '%s\n' "$rel"
       printf '%s\n' "-----BEGIN $rel-----"
     } >> "$tmp" || { rm -f "$tmp"; return 1; }
-    if [ -f "$dest" ] && [ ! -L "$dest" ]; then
+    if [ "$item" = crew-personas ] && [ -d "$dest" ] && [ ! -L "$dest" ]; then
+      printf '%s\n' "DIRECTORY - re-read every validated persona file" >> "$tmp" || { rm -f "$tmp"; return 1; }
+    elif [ -f "$dest" ] && [ ! -L "$dest" ]; then
       # Stream destination post-write bytes only - never re-read the primary.
       cat "$dest" >> "$tmp" || { rm -f "$tmp"; return 1; }
     else

@@ -2,25 +2,25 @@
   "rules": [
     {
       "when": "The task depends on fresh news, current events, live public facts, or recent market and product changes.",
-      "use": { "harness": "grok" },
+      "use": { "harness": "grok", "persona": "investigator" },
       "why": "Grok is the preferred dispatch when current web-connected context is central to the work."
     },
     {
       "when": "The task is a trivial mechanical edit such as a rote rename, formatting sweep, targeted typo fix, or simple file gathering.",
-      "use": { "harness": "claude", "model": "haiku", "effort": "low" },
+      "use": { "harness": "claude", "model": "haiku", "effort": "low", "persona": "reviewer" },
       "why": "Use the cheapest fast profile when the task is narrow and low ambiguity."
     },
     {
       "when": "The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind.",
       "use": [
-        { "harness": "claude", "model": "claude-sonnet-5", "effort": "high" },
-        { "harness": "codex", "model": "gpt-5.5", "effort": "high" }
+        { "harness": "claude", "model": "claude-sonnet-5", "effort": "high", "persona": "architect" },
+        { "harness": "codex", "model": "gpt-5.5", "effort": "high", "persona": "backend-engineer" }
       ],
       "why": "Arrays are quota-aware automatically, so use a strong coding profile with the most available relevant quota."
     }
   ],
   "default": [
-    { "harness": "codex", "model": "gpt-5.5", "effort": "medium" },
-    { "harness": "pi", "model": "anthropic/claude-sonnet-5", "effort": "medium" }
+    { "harness": "codex", "model": "gpt-5.5", "effort": "medium", "persona": "backend-engineer" },
+    { "harness": "pi", "model": "anthropic/claude-sonnet-5", "effort": "medium", "persona": "reviewer" }
   ]
 }
