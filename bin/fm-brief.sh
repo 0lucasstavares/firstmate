@@ -44,6 +44,8 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
+# Every ship brief points workers to AGENTS.md section 7's authoritative
+# delivery-language policy before they commit, open a PR, or start no-mistakes.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -372,6 +374,7 @@ $RULE1
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+8. Before committing, opening a PR, or starting no-mistakes, read and follow the authoritative Delivery language policy in \`$FM_ROOT/AGENTS.md\` section 7, including its no-mistakes intent requirement.
 
 # Project memory
 If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the worktree.

@@ -136,6 +136,31 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+test_ship_brief_points_to_delivery_language_owner() {
+  local home id brief
+  home="$TMP_ROOT/delivery-language-home"
+  write_registry "$home"
+  assert_grep "### Delivery language" "$ROOT/AGENTS.md" \
+    "AGENTS.md lost the authoritative delivery-language section"
+  assert_grep "Use concise English for commit subjects and pull-request titles, and concise Brazilian Portuguese for authored commit bodies and pull-request bodies." "$ROOT/AGENTS.md" \
+    "delivery-language owner lost the bilingual copy contract"
+  assert_grep "include this language directive in the run intent" "$ROOT/AGENTS.md" \
+    "delivery-language owner lost the no-mistakes prompt-surface requirement"
+  assert_grep "exposes no locale or language setting" "$ROOT/AGENTS.md" \
+    "delivery-language owner no longer documents the no-mistakes localization limit"
+
+  for id_proj in "language-nomistakes:no-registry-proj" "language-direct:direct-proj" "language-local:local-proj"; do
+    id=${id_proj%%:*}
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "${id_proj##*:}" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_grep "authoritative Delivery language policy in \`$ROOT/AGENTS.md\` section 7" "$brief" \
+      "$id: ship brief lost its delivery-language owner reference"
+    assert_grep "including its no-mistakes intent requirement" "$brief" \
+      "$id: ship brief lost the no-mistakes language-intent requirement"
+  done
+  pass "fm-brief.sh: every ship mode references the authoritative delivery-language policy"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -388,6 +413,7 @@ test_ship_modes_generate_clean_briefs
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording
+test_ship_brief_points_to_delivery_language_owner
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout
