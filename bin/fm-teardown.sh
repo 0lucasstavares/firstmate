@@ -233,7 +233,7 @@ validate_pr_poll_cleanup() {
   done
   if [ -e "$state_dir/$id.pr-poll-retirement" ] \
     || [ -L "$state_dir/$id.pr-poll-retirement" ]; then
-    fm_pr_poll_retirement_state_valid "$state_dir" "$id" "$SCRIPT_DIR/fm-pr-poll.sh" || {
+    fm_pr_poll_retirement_state_valid "$state_dir" "$id" || {
       echo "REFUSED: invalid PR-poll retirement receipt; preserving task state." >&2
       return 1
     }

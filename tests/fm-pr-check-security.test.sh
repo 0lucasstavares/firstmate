@@ -2881,14 +2881,14 @@ EOF
 }
 
 seed_canonical_poll() {
-  local dir=$1 id=$2 url=$3 state provider host path number
+  local dir=$1 id=$2 url=$3 template=${4:-$POLL} state provider host path number
   state="$dir/home/state"
   fm_pr_url_parse "$url" || fail "retirement fixture URL was invalid"
   provider=$FM_PR_PROVIDER
   host=$FM_PR_HOST
   path=$FM_PR_PATH
   number=$FM_PR_NUMBER
-  fm_pr_poll_prepare "$state" "$id" "$provider" "$url" "$host" "$path" "$number" "$POLL" \
+  fm_pr_poll_prepare "$state" "$id" "$provider" "$url" "$host" "$path" "$number" "$template" \
     || fail "could not prepare retirement fixture"
   fm_pr_poll_publish_prepared || fail "could not publish retirement fixture"
   printf '%s\n' fm-pr-check-migration-scan-v1 > "$state/.pr-check-migration-scan-v1"
@@ -3002,7 +3002,7 @@ test_persistent_secondmate_retirement_is_poll_only() {
 }
 
 test_retirement_crash_recovery() {
-  local dir state rc raw_count drain_count
+  local dir state rc raw_count drain_count historical_poll current_poll
 
   dir=$(make_case retirement-after-queue)
   state="$dir/home/state"
@@ -3086,6 +3086,24 @@ test_retirement_crash_recovery() {
   [ "$rc" -eq 0 ] || fail "receipt-only restart failed: $(cat "$dir/restart.err")"
   case "$(cat "$dir/restart.out")" in check:*z-stop.check.sh:*stop-cycle) ;; *) fail "receipt-only restart did not reach the control check" ;; esac
   assert_poll_absent "$state" task-a
+
+  dir=$(make_case retirement-after-template-update)
+  state="$dir/home/state"
+  historical_poll="$dir/historical-fm-pr-poll.sh"
+  current_poll="$dir/current-fm-pr-poll.sh"
+  cp "$POLL" "$historical_poll"
+  cp "$POLL" "$current_poll"
+  printf '\n' >> "$current_poll"
+  chmod 0600 "$historical_poll" "$current_poll"
+  write_poll_meta "$state" task-a https://github.com/o/r/pull/22
+  seed_canonical_poll "$dir" task-a https://github.com/o/r/pull/22 "$historical_poll"
+  fm_pr_poll_snapshot_capture "$state" task-a "$historical_poll" \
+    || fail "could not snapshot pre-update retirement fixture"
+  fm_pr_poll_retirement_publish "$state" task-a "$historical_poll" merged \
+    || fail "could not publish pre-update retirement receipt"
+  fm_pr_poll_retirement_recover_one "$state" task-a "$current_poll" \
+    || fail "template update blocked receipt-bound crash recovery"
+  assert_poll_absent "$state" task-a
   pass "queue, receipt, and every fixed-path removal crash point recover without loss or repeated execution"
 }
 
@@ -3135,6 +3153,7 @@ test_external_merge_transition_retires_only_terminal_poll() {
 
 test_retirement_refuses_replacement_and_nonterminal_results() {
   local dir state before rc replacement_check replacement_data replacement_registration replacement_meta
+  local historical_poll current_poll
   dir=$(make_case retirement-replacement)
   state="$dir/home/state"
   write_poll_meta "$state" task-a https://github.com/o/r/pull/6
@@ -3180,6 +3199,35 @@ test_retirement_refuses_replacement_and_nonterminal_results() {
   [ "$(shasum -a 256 "$state/task-a.pr-poll-registration")" = "$replacement_registration" ] || fail "stale receipt changed replacement registration"
   [ "$(shasum -a 256 "$state/task-a.meta")" = "$replacement_meta" ] || fail "stale receipt changed replacement metadata"
   fm_pr_poll_artifacts_valid "$state" task-a "$POLL" || fail "replacement poll lost canonical provenance"
+
+  dir=$(make_case retirement-template-update-rearm-race)
+  state="$dir/home/state"
+  historical_poll="$dir/historical-fm-pr-poll.sh"
+  current_poll="$dir/current-fm-pr-poll.sh"
+  cp "$POLL" "$historical_poll"
+  cp "$POLL" "$current_poll"
+  printf '\n' >> "$current_poll"
+  chmod 0600 "$historical_poll" "$current_poll"
+  write_poll_meta "$state" task-a https://github.com/o/r/pull/23
+  seed_canonical_poll "$dir" task-a https://github.com/o/r/pull/23 "$historical_poll"
+  fm_pr_poll_snapshot_capture "$state" task-a "$historical_poll" \
+    || fail "could not snapshot pre-update rearm fixture"
+  fm_pr_poll_retirement_publish "$state" task-a "$historical_poll" merged \
+    || fail "could not publish pre-update rearm receipt"
+  write_poll_meta "$state" task-a https://github.com/o/r/pull/24
+  seed_canonical_poll "$dir" task-a https://github.com/o/r/pull/24 "$current_poll"
+  replacement_check=$(shasum -a 256 "$state/task-a.check.sh")
+  replacement_data=$(shasum -a 256 "$state/task-a.pr-poll")
+  replacement_registration=$(shasum -a 256 "$state/task-a.pr-poll-registration")
+  replacement_meta=$(shasum -a 256 "$state/task-a.meta")
+  fm_pr_poll_retirement_recover_one "$state" task-a "$current_poll" \
+    || fail "template update blocked stale receipt recovery"
+  [ ! -e "$state/task-a.pr-poll-retirement" ] || fail "pre-update receipt survived canonical replacement recovery"
+  [ "$(shasum -a 256 "$state/task-a.check.sh")" = "$replacement_check" ] || fail "pre-update receipt changed replacement check"
+  [ "$(shasum -a 256 "$state/task-a.pr-poll")" = "$replacement_data" ] || fail "pre-update receipt changed replacement data"
+  [ "$(shasum -a 256 "$state/task-a.pr-poll-registration")" = "$replacement_registration" ] || fail "pre-update receipt changed replacement registration"
+  [ "$(shasum -a 256 "$state/task-a.meta")" = "$replacement_meta" ] || fail "pre-update receipt changed replacement metadata"
+  fm_pr_poll_artifacts_valid "$state" task-a "$current_poll" || fail "updated replacement poll lost canonical provenance"
 
   dir=$(make_case custom-merged-not-retired)
   state="$dir/home/state"

@@ -721,7 +721,7 @@ fm_pr_poll_retirement_parse() {
 }
 
 fm_pr_poll_retirement_receipt_valid() {
-  local state=$1 id=$2 template=$3 receipt state_device template_hash meta
+  local state=$1 id=$2 receipt state_device meta
   fm_pr_task_id_valid "$id" || return 1
   [ -d "$state" ] && [ ! -L "$state" ] || return 1
   state_device=$(fm_pr_file_device "$state") || return 1
@@ -729,9 +729,6 @@ fm_pr_poll_retirement_receipt_valid() {
   fm_pr_private_file_valid "$receipt" 600 "$state_device" || return 1
   fm_pr_poll_retirement_parse "$receipt" || return 1
   [ "$FM_PR_RETIRE_ID" = "$id" ] || return 1
-  [ -f "$template" ] && [ ! -L "$template" ] || return 1
-  template_hash=$(fm_pr_sha256 "$template") || return 1
-  [ "$template_hash" = "$FM_PR_RETIRE_TEMPLATE_HASH" ] || return 1
   meta="$state/$id.meta"
   fm_pr_metadata_identity_parse "$meta" || return 1
   [ "$FM_PR_META_PROVIDER" = "$FM_PR_RETIRE_PROVIDER" ] || return 1
@@ -783,11 +780,10 @@ fm_pr_poll_retirement_registration_valid() {
 }
 
 fm_pr_poll_retirement_check_valid() {
-  local state=$1 id=$2 template=$3 state_device check check_hash check_identity
+  local state=$1 id=$2 state_device check check_hash check_identity
   state_device=$(fm_pr_file_device "$state") || return 1
   check="$state/$id.check.sh"
   fm_pr_private_file_valid "$check" 600 "$state_device" || return 1
-  cmp -s "$template" "$check" || return 1
   check_hash=$(fm_pr_sha256 "$check") || return 1
   check_identity=$(fm_pr_file_identity "$check") || return 1
   [ "$check_hash" = "$FM_PR_RETIRE_TEMPLATE_HASH" ] || return 1
@@ -795,8 +791,8 @@ fm_pr_poll_retirement_check_valid() {
 }
 
 fm_pr_poll_retirement_state_valid() {
-  local state=$1 id=$2 template=$3 check data registration has_check=0 has_data=0 has_registration=0
-  fm_pr_poll_retirement_receipt_valid "$state" "$id" "$template" || return 1
+  local state=$1 id=$2 check data registration has_check=0 has_data=0 has_registration=0
+  fm_pr_poll_retirement_receipt_valid "$state" "$id" || return 1
   check="$state/$id.check.sh"
   data="$state/$id.pr-poll"
   registration="$state/$id.pr-poll-registration"
@@ -805,7 +801,7 @@ fm_pr_poll_retirement_state_valid() {
   [ ! -e "$registration" ] && [ ! -L "$registration" ] || has_registration=1
   if [ "$has_check" -eq 1 ]; then
     [ "$has_data" -eq 1 ] && [ "$has_registration" -eq 1 ] || return 1
-    fm_pr_poll_retirement_check_valid "$state" "$id" "$template" || return 1
+    fm_pr_poll_retirement_check_valid "$state" "$id" || return 1
     fm_pr_poll_retirement_data_valid "$state" "$id" || return 1
     fm_pr_poll_retirement_registration_valid "$state" "$id" || return 1
     return 0
@@ -838,7 +834,6 @@ fm_pr_poll_retirement_discard_obsolete() {
   fm_pr_private_file_valid "$receipt" 600 "$state_device" || return 1
   fm_pr_poll_retirement_parse "$receipt" || return 1
   [ "$FM_PR_RETIRE_ID" = "$id" ] || return 1
-  [ "$(fm_pr_sha256 "$template")" = "$FM_PR_RETIRE_TEMPLATE_HASH" ] || return 1
   receipt_hash=$(fm_pr_sha256 "$receipt") || return 1
   receipt_identity=$(fm_pr_file_identity "$receipt") || return 1
   fm_pr_poll_artifacts_valid "$state" "$id" "$template" || return 1
@@ -891,7 +886,7 @@ fm_pr_poll_retirement_publish() {
     rm -f -- "$tmp"
     return 1
   fi
-  fm_pr_poll_retirement_receipt_valid "$state" "$id" "$template" || return 1
+  fm_pr_poll_retirement_receipt_valid "$state" "$id" || return 1
 }
 
 fm_pr_poll_retirement_recover_one() {
@@ -902,7 +897,7 @@ fm_pr_poll_retirement_recover_one() {
   if [ ! -e "$receipt" ] && [ ! -L "$receipt" ]; then
     return 0
   fi
-  if ! fm_pr_poll_retirement_state_valid "$state" "$id" "$template"; then
+  if ! fm_pr_poll_retirement_state_valid "$state" "$id"; then
     fm_pr_poll_retirement_discard_obsolete "$state" "$id" "$template" && return 0
     return 1
   fi
