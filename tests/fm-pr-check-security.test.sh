@@ -3002,7 +3002,7 @@ test_persistent_secondmate_retirement_is_poll_only() {
 }
 
 test_retirement_crash_recovery() {
-  local dir state rc raw_count drain_count historical_poll current_poll
+  local dir state rc raw_count drain_count historical_poll
 
   dir=$(make_case retirement-after-queue)
   state="$dir/home/state"
@@ -3090,19 +3090,28 @@ test_retirement_crash_recovery() {
   dir=$(make_case retirement-after-template-update)
   state="$dir/home/state"
   historical_poll="$dir/historical-fm-pr-poll.sh"
-  current_poll="$dir/current-fm-pr-poll.sh"
   cp "$POLL" "$historical_poll"
-  cp "$POLL" "$current_poll"
-  printf '\n' >> "$current_poll"
-  chmod 0600 "$historical_poll" "$current_poll"
+  printf '\n' >> "$historical_poll"
+  chmod 0600 "$historical_poll"
   write_poll_meta "$state" task-a https://github.com/o/r/pull/22
   seed_canonical_poll "$dir" task-a https://github.com/o/r/pull/22 "$historical_poll"
+  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_wake_append check "$2" "$3"' _ \
+    "$ROOT/bin/fm-wake-lib.sh" "$state/task-a.check.sh" "check: $state/task-a.check.sh: merged" \
+    || fail "could not seed pre-update terminal wake"
   fm_pr_poll_snapshot_capture "$state" task-a "$historical_poll" \
     || fail "could not snapshot pre-update retirement fixture"
   fm_pr_poll_retirement_publish "$state" task-a "$historical_poll" merged \
     || fail "could not publish pre-update retirement receipt"
-  fm_pr_poll_retirement_recover_one "$state" task-a "$current_poll" \
-    || fail "template update blocked receipt-bound crash recovery"
+  add_stop_custom_check "$dir"
+  set +e
+  FM_TEST_GH_STATE=MERGED run_watcher_bounded "$dir/home" "$dir/fakebin" > "$dir/restart.out" 2> "$dir/restart.err"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "template-update recovery watcher failed: $(cat "$dir/restart.err")"
+  case "$(cat "$dir/restart.out")" in check:*z-stop.check.sh:*stop-cycle) ;; *) fail "template-update recovery did not reach the control check" ;; esac
+  [ ! -s "$dir/gh.log" ] || fail "template-update migration rebuilt and queried the retired poll"
+  [ "$(grep -c $'\tcheck\t.*task-a.check.sh\t' "$state/.wake-queue")" -eq 1 ] \
+    || fail "template-update recovery duplicated the terminal wake"
   assert_poll_absent "$state" task-a
   pass "queue, receipt, and every fixed-path removal crash point recover without loss or repeated execution"
 }

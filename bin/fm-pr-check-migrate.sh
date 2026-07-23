@@ -333,6 +333,10 @@ if [ ! -d "$STATE" ] || [ -L "$STATE" ]; then
 fi
 STATE_DEVICE=$(fm_pr_file_device "$STATE") || exit 1
 [ -n "$STATE_DEVICE" ] || exit 1
+if ! fm_pr_poll_retirement_recover_all "$STATE" "$TEMPLATE"; then
+  echo "PR_CHECK_MIGRATION: pending PR poll retirement could not be validated:$FM_PR_POLL_RETIREMENT_REJECTED" >&2
+  exit 1
+fi
 refresh_v1_x_shim() {
   local shim="$STATE/x-watch.check.sh"
   fmx_poll_shim_v1_valid "$shim" "$FM_HOME" "$FM_ROOT" "$STATE_DEVICE" || return 0
